@@ -1,0 +1,17 @@
+# IrisFlow 2.0 — dependências
+# pip install -r requirements.txt
+
+# Deep Learning
+torch>=2.2
+torchvision>=0.17
+
+# Visão computacional
+opencv-python>=4.9
+mediapipe>=0.10
+
+# Utilitários de treino
+numpy>=1.26
+tqdm>=4.66
+
+# Serialização
+# (pickle é built-in — sem dependência externa)
