@@ -4,12 +4,6 @@ __pycache__/
 *.pyo
 models/*.pt
 models/*.pkl
-datasets/*.csv
-datasets/*.json
-datasets/*.npy
-datasets/*.npz
-datasets/*.h5
-datasets/*.hdf5
 *.tar
 *.zip
 .env
