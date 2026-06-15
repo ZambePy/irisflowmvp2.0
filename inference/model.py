@@ -11,7 +11,7 @@ Arquitetura:
 
     concat → (576×3 + 625 + 3) = 2356
     MLP    → 1024 → 512 → 256 → 2
-    output → (gaze_x_cm, gaze_y_cm) relativo à câmera
+    output → (pitch_norm, yaw_norm) normalizados por π/2
 
 Os 3 backbones começam com pesos ImageNet idênticos mas são
 instâncias independentes — cada canal fine-tuna seus próprios pesos.
@@ -48,7 +48,7 @@ class IrisGazeNet(nn.Module):
         head_pose: (B, 3)  — [yaw, pitch, roll] em radianos
 
     Saída:
-        (B, 2) — [gaze_x_cm, gaze_y_cm] relativo à câmera
+        (B, 2) — [pitch_norm, yaw_norm] normalizados por π/2
     """
 
     EMBED_DIM    = 576
@@ -79,7 +79,7 @@ class IrisGazeNet(nn.Module):
             nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
 
-            nn.Linear(256, 2),   # (gaze_x_cm, gaze_y_cm)
+            nn.Linear(256, 2),   # (pitch_norm, yaw_norm)
         )
 
     def forward(
@@ -108,7 +108,7 @@ class IrisGazeNet(nn.Module):
         face_grid: torch.Tensor,
         head_pose: torch.Tensor,
     ) -> tuple[float, float]:
-        """Single-sample — retorna (gaze_x_cm, gaze_y_cm)."""
+        """Single-sample — retorna (pitch_norm, yaw_norm) — multiplicar por π/2 para obter radianos."""
         self.eval()
         out = self.forward(left_eye, right_eye, face, face_grid, head_pose)
         return float(out[0, 0]), float(out[0, 1])

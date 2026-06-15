@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from torchvision import transforms
 
-from head_pose import HeadPoseEstimator
+from tracker.head_pose import HeadPoseEstimator
 
 _mp_face = mp.solutions.face_mesh
 

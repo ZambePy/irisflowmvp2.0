@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -253,24 +254,111 @@ class ETHXGazeDataset(Dataset):
     def __getitem__(self, idx: int) -> dict: ...
 
 
+# ── MPIIFaceGaze ─────────────────────────────────────────────────────────────
+
+class MPIIFaceGazeDataset(Dataset):
+    """
+    Lê datasets/MPIIFaceGaze/mpiifacegaze.csv gerado pelo prepare_mpiifacegaze.py.
+
+    Cada sample retorna:
+        left_eye:  (3, 112, 112) — normalizado ImageNet
+        right_eye: (3, 112, 112) — normalizado ImageNet
+        face:      (3, 224, 224) — normalizado ImageNet
+        face_grid: (1, 25, 25)   — binário float32
+        head_pose: (3,)          — [yaw, pitch, roll] já normalizados por π (lidos do CSV)
+        gaze:      (2,)          — [pitch_norm, yaw_norm] já normalizados por π/2 (lidos do CSV)
+
+    Split: últimos 2 participantes (p13, p14) para validação, restantes para treino.
+    """
+
+    _VAL_PARTICIPANTS = {"p13", "p14"}
+
+    def __init__(
+        self,
+        root: str | Path,
+        split: str = "train",
+        augment: bool = False,
+    ) -> None:
+        self.root    = Path(root)
+        self.augment = augment
+        self.samples: list[dict] = []
+        self._load(split)
+
+    def _load(self, split: str) -> None:
+        csv_path = self.root / "mpiifacegaze.csv"
+        if not csv_path.exists():
+            raise FileNotFoundError(
+                f"CSV não encontrado: {csv_path}\n"
+                "Execute: python datasets/prepare_mpiifacegaze.py"
+            )
+
+        with open(csv_path, newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                is_val = row["participant"] in self._VAL_PARTICIPANTS
+                if split == "val"   and not is_val: continue
+                if split == "train" and     is_val: continue
+                self.samples.append(row)
+
+        print(f"MPIIFaceGazeDataset [{split}]: {len(self.samples)} amostras")
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, idx: int) -> dict:
+        s = self.samples[idx]
+
+        crop_dir  = Path(s["crop_dir"])
+        stem      = s["stem"]
+        face_bbox = (
+            int(s["face_bbox_x1"]), int(s["face_bbox_y1"]),
+            int(s["face_bbox_x2"]), int(s["face_bbox_y2"]),
+        )
+
+        left, right, face = _load_crops(crop_dir, stem)
+        left_t, right_t, face_t, grid_t = _crops_to_tensors(
+            left, right, face, face_bbox,
+            int(s["frame_w"]), int(s["frame_h"]),
+        )
+
+        head_pose = torch.tensor(
+            [float(s["head_yaw"]), float(s["head_pitch"]), float(s["head_roll"])],
+            dtype=torch.float32,
+        )
+        gaze = torch.tensor(
+            [float(s["gaze_pitch"]), float(s["gaze_yaw"])],
+            dtype=torch.float32,
+        )
+
+        return {
+            "left_eye":  left_t,    # (3, 112, 112)
+            "right_eye": right_t,   # (3, 112, 112)
+            "face":      face_t,    # (3, 224, 224)
+            "face_grid": grid_t,    # (1, 25, 25)
+            "head_pose": head_pose, # (3,) — [yaw, pitch, roll] normalizados por π
+            "gaze":      gaze,      # (2,) — [pitch_norm, yaw_norm] normalizados por π/2
+        }
+
+
 # ── Combinação de datasets ────────────────────────────────────────────────────
 
 def build_dataset(
-    gazecapture_root: str | Path | None = None,
-    ethxgaze_root:    str | Path | None = None,
+    gazecapture_root:  str | Path | None = None,
+    ethxgaze_root:     str | Path | None = None,
+    mpiifacegaze_root: str | Path | None = None,
     split: str = "train",
     augment: bool = False,
 ) -> Dataset:
     """
     Combina múltiplos datasets em um único Dataset PyTorch.
 
-    Uso atual (só GazeCapture):
-        ds = build_dataset(gazecapture_root="datasets/GazeCapture", split="train")
+    Uso com MPIIFaceGaze:
+        ds = build_dataset(mpiifacegaze_root="datasets/MPIIFaceGaze", split="train")
 
-    Uso futuro (GazeCapture + ETH-XGaze):
+    Uso combinado:
         ds = build_dataset(
+            mpiifacegaze_root="datasets/MPIIFaceGaze",
             gazecapture_root="datasets/GazeCapture",
-            ethxgaze_root="datasets/ETH-XGaze",
             split="train",
         )
     """
@@ -282,8 +370,13 @@ def build_dataset(
     if ethxgaze_root:
         datasets.append(ETHXGazeDataset(ethxgaze_root, split=split, augment=augment))
 
+    if mpiifacegaze_root:
+        datasets.append(MPIIFaceGazeDataset(mpiifacegaze_root, split=split, augment=augment))
+
     if not datasets:
-        raise ValueError("Passe ao menos um dataset: gazecapture_root ou ethxgaze_root.")
+        raise ValueError(
+            "Passe ao menos um dataset: gazecapture_root, ethxgaze_root ou mpiifacegaze_root."
+        )
 
     if len(datasets) == 1:
         return datasets[0]

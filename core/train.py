@@ -1,11 +1,10 @@
 # train.py — IrisFlow 2.0
 """
-Treino do IrisGazeNet v3 no ETH-XGaze.
+Treino do IrisGazeNet v3.
 
 Uso:
-    python train.py --root datasets/ETH-XGaze --epochs 30 --out models/irisgazenet_v3.pt
+    python core/train.py --mpiifacegaze datasets/MPIIFaceGaze --epochs 30 --out models/irisgazenet_v3.pt
 
-Apenas o MLP é treinado por padrão.
 Para fine-tunar os backbones também: --finetune-backbones
 """
 
@@ -21,7 +20,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from dataset import ETHXGazeDataset
+from datasets.dataset import build_dataset
 from model import IrisGazeNet
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -67,35 +66,49 @@ def evaluate(model, loader, device) -> dict:
 
         pred = model(left, right, face, grid, pose)
 
-        # Erro euclidiano em cm
+        # Erro euclidiano em espaço normalizado (pitch/yaw)
         err = torch.sqrt(((pred - gaze)**2).sum(dim=1))
         errors.extend(err.cpu().tolist())
 
     errors = np.array(errors)
     return {
-        "mae_cm":    float(np.mean(errors)),
-        "median_cm": float(np.median(errors)),
-        "p90_cm":    float(np.percentile(errors, 90)),
+        "mae_norm":    float(np.mean(errors)),
+        "median_norm": float(np.median(errors)),
+        "p90_norm":    float(np.percentile(errors, 90)),
     }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",               required=True)
-    parser.add_argument("--epochs",             type=int,   default=30)
-    parser.add_argument("--lr",                 type=float, default=1e-3)
-    parser.add_argument("--batch-size",         type=int,   default=64)
-    parser.add_argument("--workers",            type=int,   default=4)
-    parser.add_argument("--out",                default="models/irisgazenet_v3.pt")
-    parser.add_argument("--finetune-backbones", action="store_true",
+    parser.add_argument("--mpiifacegaze",        default="datasets/MPIIFaceGaze")
+    parser.add_argument("--gazecapture",         default=None)
+    parser.add_argument("--ethxgaze",            default=None)
+    parser.add_argument("--epochs",              type=int,   default=30)
+    parser.add_argument("--lr",                  type=float, default=1e-3)
+    parser.add_argument("--batch-size",          type=int,   default=64)
+    parser.add_argument("--workers",             type=int,   default=4)
+    parser.add_argument("--out",                 default="models/irisgazenet_v3.pt")
+    parser.add_argument("--finetune-backbones",  action="store_true",
                         help="Fine-tunar os 3 backbones além do MLP")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("Device: %s", device)
 
-    train_ds = ETHXGazeDataset(args.root, split="train", augment=True)
-    val_ds   = ETHXGazeDataset(args.root, split="val",   augment=False)
+    train_ds = build_dataset(
+        mpiifacegaze_root=args.mpiifacegaze,
+        gazecapture_root=args.gazecapture,
+        ethxgaze_root=args.ethxgaze,
+        split="train",
+        augment=True,
+    )
+    val_ds = build_dataset(
+        mpiifacegaze_root=args.mpiifacegaze,
+        gazecapture_root=args.gazecapture,
+        ethxgaze_root=args.ethxgaze,
+        split="val",
+        augment=False,
+    )
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size,
                               shuffle=True,  num_workers=args.workers, pin_memory=True)
@@ -128,18 +141,18 @@ def main() -> None:
         scheduler.step()
 
         logger.info(
-            "Epoch %02d/%02d | loss=%.4f | val_mae=%.3f cm | val_p90=%.3f cm | %.1fs",
+            "Epoch %02d/%02d | loss=%.4f | val_mae=%.4f | val_p90=%.4f | %.1fs",
             epoch, args.epochs,
-            train_m["loss"], val_m["mae_cm"], val_m["p90_cm"],
+            train_m["loss"], val_m["mae_norm"], val_m["p90_norm"],
             time.perf_counter() - t0,
         )
 
-        if val_m["mae_cm"] < best_mae:
-            best_mae = val_m["mae_cm"]
+        if val_m["mae_norm"] < best_mae:
+            best_mae = val_m["mae_norm"]
             model.save(args.out)
-            logger.info("  ✓ Modelo salvo (MAE=%.3f cm)", best_mae)
+            logger.info("  ✓ Modelo salvo (MAE=%.4f)", best_mae)
 
-    logger.info("Treino concluído — melhor MAE: %.3f cm", best_mae)
+    logger.info("Treino concluído — melhor MAE: %.4f", best_mae)
 
 
 if __name__ == "__main__":

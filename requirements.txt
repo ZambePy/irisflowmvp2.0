@@ -7,11 +7,14 @@ torchvision>=0.17
 
 # Visão computacional
 opencv-python>=4.9
-mediapipe>=0.10
+mediapipe==0.10.14
 
 # Utilitários de treino
 numpy>=1.26
 tqdm>=4.66
+
+# Leitura de .mat (calibração MPIIFaceGaze)
+scipy>=1.12
 
 # Serialização
 # (pickle é built-in — sem dependência externa)

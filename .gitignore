@@ -7,3 +7,25 @@ models/*.pkl
 *.tar
 *.zip
 .env
+
+# Datasets pesados (pastas de dados — código Python em datasets/ continua rastreado)
+datasets/MPIIFaceGaze/
+datasets/GazeCapture/
+datasets/ETH-XGaze/
+data/
+*.csv
+*.tsv
+*.parquet
+*.arrow
+*.feather
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.jsonl
+*.db
+*.sqlite
+*.sqlite3
+*.xlsx
+*.xls
+*.pkl
